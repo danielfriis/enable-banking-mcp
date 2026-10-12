@@ -32,6 +32,8 @@ import {
   renderDisconnectedPage,
   renderConsentPage,
   renderWizardPage,
+  renderPrivacyPage,
+  renderTermsPage,
   type WizardState,
 } from "./ui/pages";
 
@@ -277,6 +279,14 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
     const path = url.pathname;
     const baseUrl = getBaseUrl(request);
 
+    if (path === "/privacy") {
+      return htmlResponse(renderPrivacyPage(url.host));
+    }
+
+    if (path === "/terms") {
+      return htmlResponse(renderTermsPage(url.host));
+    }
+
     if (path === "/login") {
       if (request.method === "GET") {
         return htmlResponse(renderLoginPage());
@@ -346,7 +356,7 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
           try {
             const normalizedPem = await normalizePEM(privateKey);
             const payload = createJWTPayload(appId);
-            const token = await signJWT(payload, normalizedPem);
+            const token = await signJWT(payload, normalizedPem, appId);
             
             const apiBase = this.env.ENABLE_BANKING_API_BASE || "https://api.enablebanking.com";
             const response = await fetch(`${apiBase}/application`, {

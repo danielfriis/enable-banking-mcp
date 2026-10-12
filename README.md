@@ -2,8 +2,6 @@
 
 A personal remote MCP (Model Context Protocol) server that connects your bank accounts to AI assistants like Claude, ChatGPT, and Cursor via the [Enable Banking](https://enablebanking.com/) PSD2 AIS API.
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nowadays-tech/enable-banking-mcp)
-
 ## Features
 
 - **5 MCP Tools**: `list_accounts`, `get_balances`, `get_transactions`, `search_transactions`, `summarize_spending`
@@ -12,6 +10,22 @@ A personal remote MCP (Model Context Protocol) server that connects your bank ac
 - **Guided Setup Wizard**: Step-by-step instructions right in the web UI
 - **One-Click Deploy**: Deploy to your own Cloudflare account in minutes
 - **Privacy-First**: Your data stays in your Cloudflare account, no third-party storage
+
+## Deployment Options
+
+### Option A: Set Up with an AI Agent
+
+Let an AI coding agent (Claude Code, Cursor, Codex) deploy this for you. Copy this prompt:
+
+> Clone https://github.com/nowadays-tech/enable-banking-mcp and follow AGENTS.md to deploy it to my Cloudflare account.
+
+The agent will guide you through Wrangler authentication, KV namespace creation, secret generation, and deployment. See [AGENTS.md](AGENTS.md) for the full instructions the agent follows.
+
+### Option B: One-Click Deploy
+
+Click the button below to deploy via the Cloudflare dashboard:
+
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nowadays-tech/enable-banking-mcp)
 
 ## What the Deploy Page Asks For
 
@@ -42,10 +56,13 @@ That's it! The Enable Banking credentials are configured through the setup wizar
 After deployment, visit your worker URL (e.g., `https://enable-banking-mcp.YOUR-SUBDOMAIN.workers.dev/`):
 
 1. **Log in** with your AUTH_SECRET password
-2. **Step A**: Copy your redirect URL and create an Enable Banking app
+2. **Step A**: Copy your URLs and create an Enable Banking app
    - Go to [Enable Banking Control Panel](https://enablebanking.com/cp/) (link opens in new tab)
    - Create a free account if needed
-   - Create a new application with your redirect URL
+   - Create a new application with:
+     - **Redirect URL**: `https://YOUR-WORKER.workers.dev/callback`
+     - **Privacy URL**: `https://YOUR-WORKER.workers.dev/privacy`
+     - **Terms URL**: `https://YOUR-WORKER.workers.dev/terms`
    - Choose **Sandbox** (test data) or **Production** (real accounts)
    - The `.pem` private key downloads automatically when you generate it
 3. **Step B**: Enter your App ID and upload the `.pem` file
@@ -103,6 +120,32 @@ npm run deploy
 ```
 
 Then visit your worker URL to complete the setup wizard.
+
+## Updating
+
+The **Deploy to Cloudflare** button creates a copy of this repository in your own GitHub account, connected to Cloudflare Workers Builds. Pushes to your copy's `main` branch auto-deploy to your worker.
+
+To pull in updates from this upstream repository:
+
+```bash
+# Clone your copy (replace with your GitHub username)
+git clone https://github.com/YOUR-USERNAME/enable-banking-mcp.git
+cd enable-banking-mcp
+
+# Add upstream remote (only needed once)
+git remote add upstream https://github.com/nowadays-tech/enable-banking-mcp
+
+# Pull upstream changes (--allow-unrelated-histories only needed the first time)
+git pull upstream main --allow-unrelated-histories
+
+# Resolve any conflicts if prompted, then push to trigger auto-deploy
+git push
+```
+
+**Your data is preserved across updates:**
+- KV namespace data (bank sessions, OAuth tokens)
+- Stored Enable Banking credentials (encrypted in KV)
+- AUTH_SECRET and any other Cloudflare secrets
 
 ### Optional: Set Enable Banking Credentials via Environment
 
