@@ -6,11 +6,13 @@
   "compatibility_flags": ["nodejs_compat"],
 
   // KV namespace for storing bank sessions and consent data
-  // The Deploy to Cloudflare button will auto-provision this
+  // For local development: run `npx wrangler kv namespace create BANKING_KV`
+  // and replace the id below with the output
+  // For Deploy to Cloudflare button: the system will auto-provision this
   "kv_namespaces": [
     {
       "binding": "BANKING_KV",
-      "id": ""
+      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
     }
   ],
 

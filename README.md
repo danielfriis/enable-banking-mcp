@@ -39,10 +39,9 @@ cd enable-banking-mcp
 # Install dependencies
 npm install
 
-# Create KV namespace
+# Create KV namespace and note the ID
 npx wrangler kv namespace create BANKING_KV
-
-# Update wrangler.jsonc with the KV namespace ID from the output
+# Copy the ID from the output and update wrangler.jsonc
 
 # Set secrets
 npx wrangler secret put ENABLE_BANKING_APP_ID
