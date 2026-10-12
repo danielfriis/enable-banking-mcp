@@ -1,4 +1,4 @@
-import { OAuthProvider, AuthorizationError, getOAuthApi } from "@cloudflare/workers-oauth-provider";
+import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { createMcpHandler } from "agents/mcp/server";
 import type { Env, BankSession } from "./types";
@@ -34,6 +34,7 @@ import {
   renderWizardPage,
   renderPrivacyPage,
   renderTermsPage,
+  renderErrorPage,
   type WizardState,
 } from "./ui/pages";
 
@@ -208,20 +209,7 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
   }
 
   private async handleAuthorize(request: Request): Promise<Response> {
-    const baseUrl = getBaseUrl(request);
-    const oauthHelpers = getOAuthApi(
-      {
-        defaultHandler: { fetch: async () => new Response("") },
-        authorizeEndpoint: "/authorize",
-        tokenEndpoint: "/token",
-        clientRegistrationEndpoint: "/register",
-        scopesSupported: ["banking:read"],
-        resourceMetadata: {
-          resource: `${baseUrl}/mcp`,
-        },
-      },
-      this.env
-    );
+    const oauthHelpers = this.env.OAUTH_PROVIDER;
 
     try {
       const authRequest = await oauthHelpers.parseAuthRequest(request);
@@ -306,6 +294,13 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
         }
         return htmlResponse(
           renderCallbackErrorPage(`Authorization error: ${error.description}`),
+          400
+        );
+      }
+      if (error instanceof CimdFetchError) {
+        console.error("Client metadata fetch error:", error);
+        return htmlResponse(
+          renderCallbackErrorPage(`Failed to fetch client metadata: ${error.detail}`),
           400
         );
       }
@@ -686,6 +681,15 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
       });
     }
 
+    if (path === "/.well-known/oauth-protected-resource") {
+      return jsonResponse({
+        resource: `${baseUrl}/mcp`,
+        authorization_servers: [baseUrl],
+        scopes_supported: ["banking:read"],
+        bearer_methods_supported: ["header"],
+      });
+    }
+
     return new Response("Not Found", { status: 404 });
   }
 }
@@ -713,25 +717,56 @@ export default {
     const path = url.pathname;
     const baseUrl = getBaseUrl(request);
 
-    if (request.method === "OPTIONS") {
-      return new Response(null, {
-        headers: {
-          "Access-Control-Allow-Origin": "*",
-          "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-          "Access-Control-Allow-Headers": "Authorization, Content-Type",
-          "Access-Control-Max-Age": "86400",
-        },
-      });
-    }
-
-    if (path === "/mcp" || path.startsWith("/mcp/")) {
-      const isBearerAuth = await validateBearerToken(request, env);
-      if (isBearerAuth) {
-        return createMcpHandlerForEnv(env)(request, env, ctx);
+    try {
+      if (request.method === "OPTIONS") {
+        return new Response(null, {
+          headers: {
+            "Access-Control-Allow-Origin": "*",
+            "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
+            "Access-Control-Allow-Headers": "Authorization, Content-Type",
+            "Access-Control-Max-Age": "86400",
+          },
+        });
       }
-    }
 
-    const provider = createOAuthProvider(baseUrl);
-    return provider.fetch(request, env, ctx);
+      if (path === "/mcp" || path.startsWith("/mcp/")) {
+        const isBearerAuth = await validateBearerToken(request, env);
+        if (isBearerAuth) {
+          return createMcpHandlerForEnv(env)(request, env, ctx);
+        }
+      }
+
+      const provider = createOAuthProvider(baseUrl);
+      return provider.fetch(request, env, ctx);
+    } catch (error) {
+      console.error("Unhandled error in fetch handler:", error);
+      
+      const isJsonRequest = request.headers.get("Accept")?.includes("application/json") ||
+        request.headers.get("Content-Type")?.includes("application/json");
+      
+      if (isJsonRequest) {
+        return new Response(
+          JSON.stringify({
+            error: "server_error",
+            error_description: error instanceof Error ? error.message : "An unexpected error occurred",
+          }),
+          {
+            status: 500,
+            headers: { "Content-Type": "application/json" },
+          }
+        );
+      }
+      
+      return new Response(
+        renderErrorPage(
+          "Server Error",
+          error instanceof Error ? error.message : "An unexpected error occurred"
+        ),
+        {
+          status: 500,
+          headers: { "Content-Type": "text/html; charset=utf-8" },
+        }
+      );
+    }
   },
 };
