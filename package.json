@@ -1,0 +1,34 @@
+{
+  "name": "enable-banking-mcp",
+  "version": "1.0.0",
+  "description": "Personal MCP server for bank data via Enable Banking PSD2 AIS API",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://origin.cursor.com/git/daniel-friis/tmp-42a6017a2455aba4.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.3",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.28.0",
+    "wrangler": "^4.149.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261012.1",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}

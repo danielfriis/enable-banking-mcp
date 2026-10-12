@@ -1,0 +1,37 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "enable-banking-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // KV namespace for storing bank sessions and consent data
+  // The Deploy to Cloudflare button will auto-provision this
+  "kv_namespaces": [
+    {
+      "binding": "BANKING_KV",
+      "id": ""
+    }
+  ],
+
+  // Enable observability
+  "observability": {
+    "enabled": true
+  },
+
+  // Environment variables (non-secret)
+  "vars": {
+    "ENABLE_BANKING_API_BASE": "https://api.enablebanking.com"
+  }
+
+  // Required secrets (set via `wrangler secret put` or Cloudflare dashboard):
+  //
+  // ENABLE_BANKING_APP_ID
+  //   Your Enable Banking application ID from the control panel
+  //
+  // ENABLE_BANKING_PRIVATE_KEY
+  //   Your RSA private key (PEM format) for JWT signing
+  //
+  // AUTH_SECRET
+  //   Password for web UI login and MCP bearer token authentication
+}

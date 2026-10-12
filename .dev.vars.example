@@ -1,0 +1,11 @@
+# Copy this file to .dev.vars and fill in your values
+
+# Your Enable Banking application ID from the control panel
+ENABLE_BANKING_APP_ID=your-app-id
+
+# Your RSA private key in PEM format (include the BEGIN/END lines)
+# For multi-line values in .dev.vars, use \n for newlines or keep it as a single line
+ENABLE_BANKING_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBA...\n-----END PRIVATE KEY-----"
+
+# Secret password for authentication (web UI and MCP bearer token)
+AUTH_SECRET=your-strong-password-here

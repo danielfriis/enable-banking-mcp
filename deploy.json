@@ -1,0 +1,29 @@
+{
+  "$schema": "https://deploy.workers.cloudflare.com/schema.json",
+  "name": "enable-banking-mcp",
+  "description": "Personal MCP server for bank data via Enable Banking PSD2 AIS API",
+  "icon": "🏦",
+  "secrets": [
+    {
+      "name": "ENABLE_BANKING_APP_ID",
+      "description": "Your Enable Banking application ID from the control panel"
+    },
+    {
+      "name": "ENABLE_BANKING_PRIVATE_KEY",
+      "description": "Your RSA private key (PEM format) for JWT signing",
+      "secret": true
+    },
+    {
+      "name": "AUTH_SECRET",
+      "description": "Password for web UI login and MCP bearer token authentication",
+      "secret": true
+    }
+  ],
+  "bindings": [
+    {
+      "type": "kv_namespace",
+      "name": "BANKING_KV",
+      "description": "Storage for bank sessions and consent data"
+    }
+  ]
+}
