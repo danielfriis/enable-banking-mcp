@@ -15,7 +15,7 @@
     },
     {
       "name": "AUTH_SECRET",
-      "description": "Password for web UI login and MCP bearer token authentication",
+      "description": "Password for web UI login, OAuth consent, and bearer token authentication",
       "secret": true
     }
   ],
@@ -24,6 +24,11 @@
       "type": "kv_namespace",
       "name": "BANKING_KV",
       "description": "Storage for bank sessions and consent data"
+    },
+    {
+      "type": "kv_namespace",
+      "name": "OAUTH_KV",
+      "description": "Storage for OAuth tokens and client registrations"
     }
   ]
 }

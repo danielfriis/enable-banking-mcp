@@ -2,13 +2,13 @@
 
 A personal remote MCP (Model Context Protocol) server that connects your bank accounts to AI assistants like Claude, ChatGPT, and Cursor via the [Enable Banking](https://enablebanking.com/) PSD2 AIS API.
 
-[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/YOUR_USERNAME/enable-banking-mcp)
+[![Deploy to Cloudflare Workers](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/nowadays-tech/enable-banking-mcp)
 
 ## Features
 
 - **5 MCP Tools**: `list_accounts`, `get_balances`, `get_transactions`, `search_transactions`, `summarize_spending`
 - **32 European Countries**: Supports banks across the EU/EEA via Enable Banking
-- **Simple Authentication**: Bearer token authentication (your secret password)
+- **OAuth + Bearer Token Auth**: OAuth for Claude.ai/ChatGPT, Bearer token for Cursor/CLI tools
 - **Beautiful Setup UI**: Connect your bank through a friendly web interface
 - **One-Click Deploy**: Deploy to your own Cloudflare account in minutes
 - **Privacy-First**: Your data stays in your Cloudflare account, no third-party storage
@@ -33,15 +33,16 @@ Click the deploy button above, or deploy manually:
 
 ```bash
 # Clone this repository
-git clone https://github.com/YOUR_USERNAME/enable-banking-mcp.git
+git clone https://github.com/nowadays-tech/enable-banking-mcp.git
 cd enable-banking-mcp
 
 # Install dependencies
 npm install
 
-# Create KV namespace and note the ID
+# Create KV namespaces and note the IDs
 npx wrangler kv namespace create BANKING_KV
-# Copy the ID from the output and update wrangler.jsonc
+npx wrangler kv namespace create OAUTH_KV
+# Copy the IDs from the output and update wrangler.jsonc
 
 # Set secrets
 npx wrangler secret put ENABLE_BANKING_APP_ID
@@ -51,7 +52,7 @@ npx wrangler secret put ENABLE_BANKING_PRIVATE_KEY
 # Paste your RSA private key (including BEGIN/END lines)
 
 npx wrangler secret put AUTH_SECRET
-# Enter a strong password for MCP authentication
+# Enter a strong password for authentication
 
 # Deploy
 npm run deploy
@@ -74,22 +75,32 @@ https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev/callback
 
 ### 5. Add to Your AI Assistant
 
-#### Claude.ai
+#### Claude.ai (via OAuth)
 
-1. Go to Claude Settings → MCP Servers
-2. Add a custom server:
-   - URL: `https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev/mcp`
-   - Authentication: Bearer Token
-   - Token: Your `AUTH_SECRET`
+1. Go to Claude Settings → Integrations → Add Custom MCP Server
+2. Enter the server URL: `https://YOUR-WORKER.workers.dev/mcp`
+3. Claude will handle OAuth automatically - you'll be prompted to authorize
+4. Enter your `AUTH_SECRET` password when asked to consent
 
-#### Cursor
+#### ChatGPT (via OAuth)
 
-Add to your MCP settings:
+1. Create or edit a Custom GPT
+2. Add an Action:
+   - Import OpenAPI spec from: `https://YOUR-WORKER/.well-known/mcp`
+   - Authentication: OAuth 2.0
+   - Authorization URL: `https://YOUR-WORKER/authorize`
+   - Token URL: `https://YOUR-WORKER/token`
+   - Client Registration: `https://YOUR-WORKER/register` (for dynamic registration)
+
+#### Cursor / Claude Code (via Bearer Token)
+
+Add to your MCP settings (Settings → Features → MCP Servers):
+
 ```json
 {
   "mcpServers": {
     "banking": {
-      "url": "https://YOUR-WORKER-NAME.YOUR-SUBDOMAIN.workers.dev/mcp",
+      "url": "https://YOUR-WORKER.workers.dev/mcp",
       "headers": {
         "Authorization": "Bearer YOUR_AUTH_SECRET"
       }
@@ -97,13 +108,6 @@ Add to your MCP settings:
   }
 }
 ```
-
-#### ChatGPT (Custom GPTs)
-
-1. Create or edit a Custom GPT
-2. Add an Action with:
-   - Schema: Import from `https://YOUR-WORKER/mcp`
-   - Authentication: Bearer Token with your `AUTH_SECRET`
 
 ## MCP Tools
 
@@ -142,26 +146,27 @@ Summarizes spending by category for a month.
 |--------|-------------|
 | `ENABLE_BANKING_APP_ID` | Your Enable Banking application ID |
 | `ENABLE_BANKING_PRIVATE_KEY` | RSA private key (PEM format) for JWT signing |
-| `AUTH_SECRET` | Password for MCP and web UI authentication |
+| `AUTH_SECRET` | Password for OAuth consent, web UI, and bearer token auth |
 
-### wrangler.jsonc
+### KV Namespaces
 
-The configuration auto-provisions a KV namespace for storing bank session data:
+| Binding | Description |
+|---------|-------------|
+| `BANKING_KV` | Stores bank sessions and consent data |
+| `OAUTH_KV` | Stores OAuth tokens and client registrations |
 
-```jsonc
-{
-  "name": "enable-banking-mcp",
-  "main": "src/index.ts",
-  "compatibility_date": "2026-10-12",
-  "compatibility_flags": ["nodejs_compat"],
-  "kv_namespaces": [
-    {
-      "binding": "BANKING_KV",
-      "id": "YOUR_KV_NAMESPACE_ID"
-    }
-  ]
-}
-```
+## Authentication
+
+This server supports two authentication methods:
+
+### OAuth 2.0 (for Claude.ai, ChatGPT)
+- Supports dynamic client registration (MCP spec compliant)
+- Single-owner consent screen where you enter your `AUTH_SECRET`
+- Endpoints: `/authorize`, `/token`, `/register`
+
+### Bearer Token (for Cursor, CLI tools)
+- Simple: use your `AUTH_SECRET` as the bearer token
+- Header: `Authorization: Bearer YOUR_AUTH_SECRET`
 
 ## Limitations & Notes
 
@@ -183,7 +188,7 @@ The configuration auto-provisions a KV namespace for storing bank session data:
 ### Security & Privacy
 
 - **Your data stays private**: All data is stored in your own Cloudflare KV namespace
-- **Bearer token auth**: The `AUTH_SECRET` protects both the web UI and MCP endpoint
+- **OAuth + Bearer auth**: Flexible authentication for different clients
 - **No logging**: Transaction data is not logged or stored beyond the session
 - **JWT signing**: All Enable Banking API calls are authenticated with your private key
 - **HTTPS only**: All connections use TLS encryption
@@ -197,7 +202,7 @@ npm install
 # Generate types
 npm run types
 
-# Run locally
+# Run locally (requires KV namespace IDs in wrangler.jsonc)
 npm run dev
 
 # Run tests
@@ -214,7 +219,7 @@ npm run deploy
 
 ```
 ├── src/
-│   ├── index.ts           # Main worker entry point
+│   ├── index.ts           # Main worker entry point with OAuth provider
 │   ├── types.ts           # TypeScript type definitions
 │   ├── enable-banking/
 │   │   ├── client.ts      # Enable Banking API client
@@ -222,7 +227,7 @@ npm run deploy
 │   ├── mcp/
 │   │   └── server.ts      # MCP server with banking tools
 │   └── ui/
-│       └── pages.ts       # HTML pages for setup UI
+│       └── pages.ts       # HTML pages for setup UI and OAuth consent
 ├── test/
 │   ├── jwt.test.ts        # JWT signing tests
 │   └── tools.test.ts      # Tool handler tests
@@ -234,6 +239,12 @@ npm run deploy
 
 ### "Invalid or missing bearer token"
 Ensure you're sending the `Authorization: Bearer YOUR_AUTH_SECRET` header with MCP requests.
+
+### OAuth authorization fails
+Check that:
+1. Your `AUTH_SECRET` is set correctly
+2. The MCP client supports OAuth 2.0 with dynamic client registration
+3. You're entering the correct password on the consent screen
 
 ### "Bank consent has expired"
 Visit the setup page to reconnect your bank account. Consent typically lasts 90-180 days.
@@ -256,3 +267,4 @@ MIT License - see [LICENSE](LICENSE) for details.
 - [Enable Banking](https://enablebanking.com/) - PSD2 AIS API
 - [Cloudflare Workers](https://workers.cloudflare.com/) - Serverless platform
 - [MCP Protocol](https://modelcontextprotocol.io/) - Model Context Protocol specification
+- [@cloudflare/workers-oauth-provider](https://github.com/cloudflare/workers-oauth-provider) - OAuth provider library

@@ -5,14 +5,19 @@
   "compatibility_date": "2026-10-12",
   "compatibility_flags": ["nodejs_compat"],
 
-  // KV namespace for storing bank sessions and consent data
-  // For local development: run `npx wrangler kv namespace create BANKING_KV`
-  // and replace the id below with the output
-  // For Deploy to Cloudflare button: the system will auto-provision this
+  // KV namespaces
+  // For local development: run the following commands and replace the IDs below
+  //   npx wrangler kv namespace create BANKING_KV
+  //   npx wrangler kv namespace create OAUTH_KV
+  // For Deploy to Cloudflare button: the system will auto-provision these
   "kv_namespaces": [
     {
       "binding": "BANKING_KV",
-      "id": "REPLACE_WITH_YOUR_KV_NAMESPACE_ID"
+      "id": "REPLACE_WITH_YOUR_BANKING_KV_ID"
+    },
+    {
+      "binding": "OAUTH_KV",
+      "id": "REPLACE_WITH_YOUR_OAUTH_KV_ID"
     }
   ],
 
@@ -35,5 +40,5 @@
   //   Your RSA private key (PEM format) for JWT signing
   //
   // AUTH_SECRET
-  //   Password for web UI login and MCP bearer token authentication
+  //   Password for web UI login, OAuth consent, and bearer token authentication
 }

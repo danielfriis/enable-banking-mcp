@@ -417,3 +417,79 @@ export function renderDisconnectedPage(): string {
 </body>
 </html>`;
 }
+
+export function renderConsentPage(
+  clientName: string,
+  scopes: string[],
+  handle: string,
+  requirePassword: boolean,
+  error?: string
+): string {
+  const scopeDescriptions: Record<string, string> = {
+    "banking:read": "Read your bank accounts, balances, and transactions",
+  };
+
+  return `<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Enable Banking MCP - Authorize</title>
+  <style>${baseStyles}</style>
+</head>
+<body>
+  <div class="container">
+    <h1>🔐 Authorization Request</h1>
+    <p class="subtitle"><strong>${escapeHtml(clientName)}</strong> wants to access your banking data</p>
+
+    ${error ? `<div class="error">${escapeHtml(error)}</div>` : ""}
+
+    <div class="card">
+      <h3>Requested Permissions</h3>
+      <ul style="list-style: none; padding: 0; margin: 0;">
+        ${scopes.map((scope) => `
+          <li style="padding: 0.5rem 0; border-bottom: 1px solid #e2e8f0;">
+            ✓ ${escapeHtml(scopeDescriptions[scope] || scope)}
+          </li>
+        `).join("")}
+      </ul>
+    </div>
+
+    <form method="POST">
+      <input type="hidden" name="handle" value="${escapeHtml(handle)}" />
+      
+      ${requirePassword ? `
+        <div style="margin-bottom: 1rem;">
+          <label for="password">Enter your password to authorize</label>
+          <input type="password" id="password" name="password" required autofocus placeholder="Your AUTH_SECRET password" />
+        </div>
+      ` : `
+        <p style="color: #38a169; margin-bottom: 1rem;">✓ You are already logged in</p>
+      `}
+
+      <div style="display: flex; gap: 1rem;">
+        <button type="submit" name="action" value="approve" style="flex: 2;">
+          ${requirePassword ? "Authorize" : "Allow Access"}
+        </button>
+        <button type="submit" name="action" value="deny" class="btn-secondary" style="flex: 1;">
+          Deny
+        </button>
+      </div>
+    </form>
+
+    <p style="font-size: 0.75rem; color: #718096; margin-top: 1.5rem; text-align: center;">
+      This is your personal banking MCP server. Only authorize clients you trust.
+    </p>
+  </div>
+</body>
+</html>`;
+}
+
+function escapeHtml(text: string): string {
+  return text
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#039;");
+}

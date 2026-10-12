@@ -7,5 +7,9 @@ ENABLE_BANKING_APP_ID=your-app-id
 # For multi-line values in .dev.vars, use \n for newlines or keep it as a single line
 ENABLE_BANKING_PRIVATE_KEY="-----BEGIN PRIVATE KEY-----\nMIIEvgIBA...\n-----END PRIVATE KEY-----"
 
-# Secret password for authentication (web UI and MCP bearer token)
+# Secret password for authentication (OAuth consent, web UI, and bearer token)
 AUTH_SECRET=your-strong-password-here
+
+# Note: You also need to create KV namespaces and update wrangler.jsonc:
+#   npx wrangler kv namespace create BANKING_KV
+#   npx wrangler kv namespace create OAUTH_KV
