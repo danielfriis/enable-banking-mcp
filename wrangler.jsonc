@@ -1,0 +1,42 @@
+{
+  "$schema": "node_modules/wrangler/config-schema.json",
+  "name": "enable-banking-mcp",
+  "main": "src/index.ts",
+  "compatibility_date": "2026-10-12",
+  "compatibility_flags": ["nodejs_compat"],
+
+  // KV namespaces - IDs omitted to enable wrangler auto-provisioning.
+  // Deploy to Cloudflare: name them differently to avoid collision, e.g.:
+  //   enable-banking-mcp-data and enable-banking-mcp-oauth
+  //
+  // For local development, either:
+  //   1. Use `wrangler dev` which auto-creates local KV storage, OR
+  //   2. Create remote namespaces and add "id" fields:
+  //        npx wrangler kv namespace create BANKING_KV
+  //        npx wrangler kv namespace create OAUTH_KV
+  "kv_namespaces": [
+    { "binding": "BANKING_KV","id": "a8ddf5dfa5d6419492d21cabc53ea049" },
+    { "binding": "OAUTH_KV","id": "c0b26821ad584a3b89780e6e8e2343ad" }
+  ],
+
+  // Enable observability
+  "observability": {
+    "enabled": true
+  }
+
+  // Required secret (set via `wrangler secret put` or Cloudflare dashboard):
+  //
+  // AUTH_SECRET (required)
+  //   Password for web UI login, OAuth consent, and bearer token authentication
+  //
+  // Optional secrets (can also be configured via the setup wizard after deploy):
+  //
+  // ENABLE_BANKING_APP_ID (optional)
+  //   Your Enable Banking application ID from the control panel
+  //   If not set here, can be configured via the web UI setup wizard
+  //
+  // ENABLE_BANKING_PRIVATE_KEY (optional)
+  //   Your RSA private key (PEM format) for JWT signing
+  //   If not set here, can be configured via the web UI setup wizard
+  //   When set via environment, takes precedence over wizard-configured credentials
+}

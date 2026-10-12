@@ -1,0 +1,47 @@
+{
+  "name": "enable-banking-mcp",
+  "version": "1.0.0",
+  "description": "Personal MCP server for bank data via Enable Banking PSD2 AIS API",
+  "main": "index.js",
+  "scripts": {
+    "test": "vitest",
+    "dev": "wrangler dev",
+    "deploy": "wrangler deploy",
+    "typecheck": "tsc --noEmit",
+    "types": "wrangler types"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://origin.cursor.com/git/daniel-friis/tmp-42a6017a2455aba4.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "MIT",
+  "type": "module",
+  "cloudflare": {
+    "bindings": {
+      "AUTH_SECRET": {
+        "description": "A password you choose. Used to log in to the setup page, approve Claude/ChatGPT connections, and as the bearer token for Cursor. Use a long random value and save it in your password manager."
+      },
+      "BANKING_KV": {
+        "description": "Stores your bank connection and encrypted Enable Banking key. Give it a unique name, e.g. `enable-banking-mcp-data`."
+      },
+      "OAUTH_KV": {
+        "description": "Stores logins from Claude/ChatGPT. Give it a different name, e.g. `enable-banking-mcp-oauth`."
+      }
+    }
+  },
+  "dependencies": {
+    "@cloudflare/workers-oauth-provider": "^1.2.3",
+    "@modelcontextprotocol/server": "^2.0.0",
+    "agents": "^0.28.0",
+    "wrangler": "^4.149.0",
+    "zod": "^4.6.6"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261012.1",
+    "@types/node": "^26.6.5",
+    "typescript": "^7.0.2",
+    "vitest": "^5.0.3"
+  }
+}
