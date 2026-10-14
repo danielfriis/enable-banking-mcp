@@ -1,3 +1,5 @@
+import { renderSetupOverview } from "./setup-overview";
+import type { McpClientView } from "../mcp-clients";
 import type { BankSession, ASPSP } from "../types";
 import { baseStyles } from "./styles";
 import { escapeHtml, alert, flash, badge, consentBadge, card, page, pageHeader, field, icons } from "./components";
@@ -53,6 +55,7 @@ export interface WizardConnection {
   aspspCountry: string;
   validUntil: string;
   accountCount: number;
+  accounts?: { accountId: string; name?: string; iban?: string; currency?: string }[];
 }
 
 export interface WizardState {
@@ -64,6 +67,10 @@ export interface WizardState {
   accountCount?: number;
   consentExpiry?: string;
   connections?: WizardConnection[];
+  /** Authorized MCP clients; when set (and setup is complete) the overview page is shown. */
+  clients?: McpClientView[];
+  /** Set by the caller when the OAuth grant listing failed. */
+  clientsUnavailable?: boolean;
 }
 
 
@@ -74,6 +81,19 @@ export function renderWizardPage(
   error?: string,
   success?: string
 ): string {
+  if (state.hasCredentials && state.hasBankSession && (state.clients || state.clientsUnavailable)) {
+    return renderSetupOverview(
+      baseUrl,
+      {
+        credentialsFromEnv: state.credentialsFromEnv,
+        appId: state.appId,
+        connections: state.connections || [],
+        clients: state.clientsUnavailable ? undefined : state.clients,
+      },
+      error,
+      success
+    );
+  }
   const currentStep = !state.hasCredentials ? 1 : !state.hasBankSession ? 2 : 3;
   
   return `<!DOCTYPE html>
@@ -789,6 +809,7 @@ export function renderCallbackSuccessPage(session: BankSession, isRenewal?: bool
   const message = isRenewal
     ? `Your ${session.aspspName} connection has been renewed.`
     : `Your ${session.aspspName} account is now linked.`;
+  if (returnTo === "/setup") returnTo = undefined;
   const footer = returnTo
     ? `<a class="btn" href="${escapeHtml(returnTo)}">Continue authorization ${icons.arrowRight}</a>`
     : `<a class="btn" href="/setup">${isRenewal ? "Back to setup" : "View connections"}</a>`;
