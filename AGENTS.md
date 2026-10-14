@@ -328,6 +328,9 @@ Once configured, these tools are available:
 - **get_transactions** - Retrieve transactions within a date range. Automatically resolves the correct bank connection.
 - **search_transactions** - Search transactions by text. Automatically resolves the correct bank connection.
 - **summarize_spending** - Summarize spending by category for a month. Automatically resolves the correct bank connection.
+- **add_bank_connection** - Start adding a new bank connection from chat (returns a URL to authorize)
+
+**Important:** Adding another MCP client (e.g., authorizing Claude after ChatGPT) does NOT add a new bank connection. To connect additional banks, use `add_bank_connection` or visit `/setup`.
 
 ## Multiple Bank Connections
 

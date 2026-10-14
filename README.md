@@ -191,6 +191,8 @@ Returns for each connection:
 - `status`: "ok", "expiring" (≤14 days), or "expired"
 - `renewUrl`: Direct link to renew the consent
 
+> **Note:** Adding another MCP client (e.g., authorizing Claude.ai after ChatGPT) does NOT add a new bank connection. To connect additional banks, use the `add_bank_connection` tool or visit `/setup`.
+
 ### `list_accounts`
 Lists all connected bank accounts across all connections with names, IBANs, currencies, account types, and connection group labels.
 - `group` (optional): Filter accounts by connection group/label (e.g., "Personal", "Business")
@@ -227,6 +229,13 @@ All banking tools automatically append a warning when any connection has 14 days
 - A direct renew URL
 
 When a connection is expired, tools return a clear error message with a direct link to renew the consent.
+
+### `add_bank_connection`
+Start adding a new bank connection from chat. Returns a URL that, after password login, goes straight to Enable Banking authorization.
+- `label` (required): A label for this connection (e.g., "Holm & Friis Holding", "Personal Account")
+- `psu_type` (optional): Type of account - "personal" (default) or "business"
+- `country` (optional): Two-letter country code (e.g., "DK", "SE"). Defaults to "DK"
+- `bank` (optional): Bank name to pre-select. If it matches exactly one bank, skips bank selection
 
 ## Configuration
 

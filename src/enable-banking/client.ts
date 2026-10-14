@@ -440,3 +440,37 @@ export async function ensureBaseUrl(kv: KVNamespace, baseUrl: string): Promise<v
 export async function getBaseUrl(kv: KVNamespace): Promise<string | null> {
   return await kv.get("config:baseUrl");
 }
+export interface ConnectRequest {
+  label: string;
+  psuType: "personal" | "business";
+  country: string;
+  bankName?: string;
+  createdAt: number;
+}
+
+export async function storeConnectRequest(
+  kv: KVNamespace,
+  token: string,
+  request: ConnectRequest
+): Promise<void> {
+  await kv.put(
+    `connect_request:${token}`,
+    JSON.stringify(request),
+    { expirationTtl: 3600 }
+  );
+}
+
+export async function getConnectRequest(
+  kv: KVNamespace,
+  token: string
+): Promise<ConnectRequest | null> {
+  const data = await kv.get(`connect_request:${token}`, "json");
+  return data as ConnectRequest | null;
+}
+
+export async function deleteConnectRequest(
+  kv: KVNamespace,
+  token: string
+): Promise<void> {
+  await kv.delete(`connect_request:${token}`);
+}

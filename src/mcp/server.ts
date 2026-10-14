@@ -11,6 +11,7 @@ import {
   buildExpiryWarning,
   getBaseUrl,
   isExpiredSessionError,
+  storeConnectRequest,
 } from "../enable-banking/client";
 
 function renewUrlFor(baseUrl: string, connectionId: string): string {
@@ -135,7 +136,7 @@ export function createBankingMcpServer(env: Env) {
     "connection_status",
     {
       description:
-        "List all bank connections with their consent status (ok, expiring, expired), expiry date, days left, and a renewal link. Use this to check which connections need renewal.",
+        "List all bank connections with their consent status (ok, expiring, expired), expiry date, days left, and a renewal link. Use this to check which connections need renewal. Note: authorizing another MCP client (e.g. Claude, ChatGPT) does NOT add a new bank - use add_bank_connection to connect additional banks.",
       inputSchema: {},
     },
     async () => {
@@ -161,7 +162,7 @@ export function createBankingMcpServer(env: Env) {
     "list_accounts",
     {
       description:
-        "List all connected bank accounts across all connections. Shows account names, IBANs, currencies, types, and which connection group they belong to.",
+        "List all connected bank accounts across all connections. Shows account names, IBANs, currencies, types, and which connection group they belong to. Note: authorizing another MCP client (e.g. Claude, ChatGPT) does NOT add a new bank - use add_bank_connection to connect additional banks.",
       inputSchema: {
         group: z
           .string()
@@ -662,6 +663,62 @@ export function createBankingMcpServer(env: Env) {
             },
             spendingByCategory: sortByValue(spending),
             incomeByCategory: sortByValue(income),
+          },
+          null,
+          2
+        )
+      );
+    }
+  );
+
+  server.registerTool(
+    "add_bank_connection",
+    {
+      description:
+        "Start adding a new bank connection (e.g. a business account or another bank). Returns a one-time URL (valid 1 hour) the user opens to log in with the setup password and approve access at their bank (e.g. MitID). " +
+        "Authorizing another MCP client does NOT add a bank; use this tool or /setup. Existing connections are not affected.",
+      inputSchema: {
+        label: z.string().describe("A label for this connection (e.g. 'Holm & Friis Holding', 'Personal Account')"),
+        psu_type: z
+          .enum(["personal", "business"])
+          .optional()
+          .describe("Type of account: 'personal' (default) or 'business'"),
+        country: z
+          .string()
+          .optional()
+          .describe("Two-letter country code (e.g. 'DK', 'SE'). Defaults to 'DK'"),
+        bank: z
+          .string()
+          .optional()
+          .describe("Bank name to pre-select. If it matches exactly one bank, bank selection is skipped"),
+      },
+    },
+    async ({ label, psu_type, country, bank }) => {
+      const baseUrl = await getBaseUrl(env.BANKING_KV);
+      if (!baseUrl) {
+        return textContent("Base URL not configured. Please visit the setup page first.");
+      }
+      const token = crypto.randomUUID();
+      const psuType = psu_type || "personal";
+      const countryCode = (country || "DK").toUpperCase();
+      await storeConnectRequest(env.BANKING_KV, token, {
+        label,
+        psuType,
+        country: countryCode,
+        bankName: bank,
+        createdAt: Date.now(),
+      });
+      return textContent(
+        JSON.stringify(
+          {
+            url: `${baseUrl}/connect?token=${token}`,
+            label,
+            psuType,
+            country: countryCode,
+            bank: bank || null,
+            expiresIn: "1 hour",
+            instructions:
+              "Open this URL to authorize the bank connection. You will need to log in with your setup password first.",
           },
           null,
           2
