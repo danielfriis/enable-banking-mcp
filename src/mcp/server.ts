@@ -1,17 +1,55 @@
 import { McpServer } from "@modelcontextprotocol/server";
 import { z } from "zod";
-import type { Env, BankSession, Transaction } from "../types";
+import type { Env, BankSession, Transaction, ConnectionStatusInfo } from "../types";
 import {
   EnableBankingClient,
-  getStoredSession,
   isConsentExpired,
   getAllSessions,
   findConnectionByAccountId,
   getConnectionIndex,
+  buildConnectionInfo,
+  buildExpiryWarning,
+  getBaseUrl,
 } from "../enable-banking/client";
 
-const CONSENT_EXPIRED_MESSAGE =
-  "Bank consent has expired. Please reconnect your bank account by visiting the setup page at /setup";
+function renewUrlFor(baseUrl: string, connectionId: string): string {
+  return `${baseUrl}/renew/${encodeURIComponent(connectionId)}`;
+}
+
+async function expiredMessage(env: Env, label: string, connectionId: string): Promise<string> {
+  const baseUrl = await getBaseUrl(env.BANKING_KV);
+  if (baseUrl) {
+    return `Connection '${label}' has expired. Renew here: ${renewUrlFor(baseUrl, connectionId)}`;
+  }
+  return `Bank consent for "${label}" has expired. Please reconnect by visiting the setup page at /setup`;
+}
+
+async function getExpiryWarning(env: Env): Promise<string | null> {
+  const baseUrl = await getBaseUrl(env.BANKING_KV);
+  if (!baseUrl) return null;
+  const sessions = await getAllSessions(env.BANKING_KV);
+  const index = await getConnectionIndex(env.BANKING_KV);
+  return buildExpiryWarning(withLabels(sessions, index), baseUrl);
+}
+
+function withLabels<T extends BankSession & { connectionId: string }>(
+  sessions: T[],
+  index: Awaited<ReturnType<typeof getConnectionIndex>>
+): T[] {
+  return sessions.map((s) => {
+    const info = index?.connections.find((c) => c.id === s.connectionId);
+    return {
+      ...s,
+      label: info?.label || s.label || (s.connectionId === "default" ? "Default" : s.aspspName),
+      psuType: info?.psuType || s.psuType,
+    };
+  });
+}
+
+export function appendExpiryWarning(result: string, warning: string | null): string {
+  if (!warning) return result;
+  return `${result}\n\n---\n${warning}`;
+}
 
 function formatAmount(amount: string, currency: string): string {
   const num = parseFloat(amount);
@@ -69,6 +107,35 @@ export function createBankingMcpServer(env: Env) {
     name: "enable-banking-mcp",
     version: "1.0.0",
   });
+
+  const ok = async (text: string) =>
+    textContent(appendExpiryWarning(text, await getExpiryWarning(env)));
+
+  server.registerTool(
+    "connection_status",
+    {
+      description:
+        "List all bank connections with their consent status (ok, expiring, expired), expiry date, days left, and a renewal link. Use this to check which connections need renewal.",
+      inputSchema: {},
+    },
+    async () => {
+      const baseUrl = await getBaseUrl(env.BANKING_KV);
+      if (!baseUrl) {
+        return textContent("Base URL not configured. Please visit the setup page first.");
+      }
+      const sessions = await getAllSessions(env.BANKING_KV);
+      if (sessions.length === 0) {
+        return textContent(
+          "No bank connections found. Please visit the setup page at /setup to connect your bank."
+        );
+      }
+      const index = await getConnectionIndex(env.BANKING_KV);
+      const connections: ConnectionStatusInfo[] = withLabels(sessions, index).map((session) =>
+        buildConnectionInfo(session, baseUrl)
+      );
+      return textContent(JSON.stringify({ connections }, null, 2));
+    }
+  );
 
   server.registerTool(
     "list_accounts",
@@ -152,7 +219,7 @@ export function createBankingMcpServer(env: Env) {
         );
       }
 
-      return textContent(
+      return await ok(
         JSON.stringify(
           {
             totalConnections: connections.length,
@@ -199,9 +266,7 @@ export function createBankingMcpServer(env: Env) {
         const connectionIndex = await getConnectionIndex(env.BANKING_KV);
         const connInfo = connectionIndex?.connections.find(c => c.id === result.connectionId);
         const label = connInfo?.label || session.label || session.aspspName;
-        return textContent(
-          `Bank consent for "${label}" has expired. Please reconnect by visiting the setup page at /setup`
-        );
+        return textContent(await expiredMessage(env, label, result.connectionId));
       }
 
       const account = session.accounts.find((a) => a.accountId === account_id);
@@ -225,7 +290,7 @@ export function createBankingMcpServer(env: Env) {
         date: b.reference_date || "N/A",
       }));
 
-      return textContent(
+      return await ok(
         JSON.stringify(
           {
             group: groupLabel,
@@ -281,9 +346,7 @@ export function createBankingMcpServer(env: Env) {
         const connectionIndex = await getConnectionIndex(env.BANKING_KV);
         const connInfo = connectionIndex?.connections.find(c => c.id === result.connectionId);
         const label = connInfo?.label || session.label || session.aspspName;
-        return textContent(
-          `Bank consent for "${label}" has expired. Please reconnect by visiting the setup page at /setup`
-        );
+        return textContent(await expiredMessage(env, label, result.connectionId));
       }
 
       const account = session.accounts.find((a) => a.accountId === account_id);
@@ -329,7 +392,7 @@ export function createBankingMcpServer(env: Env) {
         ...(txResult.transactions.pending || []).map((tx) => formatTx(tx, "pending")),
       ];
 
-      return textContent(
+      return await ok(
         JSON.stringify(
           {
             group: groupLabel,
@@ -390,9 +453,7 @@ export function createBankingMcpServer(env: Env) {
         const connectionIndex = await getConnectionIndex(env.BANKING_KV);
         const connInfo = connectionIndex?.connections.find(c => c.id === result.connectionId);
         const label = connInfo?.label || session.label || session.aspspName;
-        return textContent(
-          `Bank consent for "${label}" has expired. Please reconnect by visiting the setup page at /setup`
-        );
+        return textContent(await expiredMessage(env, label, result.connectionId));
       }
 
       const connectionIndex = await getConnectionIndex(env.BANKING_KV);
@@ -450,7 +511,7 @@ export function createBankingMcpServer(env: Env) {
         continuationKey = txResult.continuation_key;
       } while (continuationKey && matches.length < maxResults);
 
-      return textContent(
+      return await ok(
         JSON.stringify(
           {
             group: groupLabel,
@@ -502,9 +563,7 @@ export function createBankingMcpServer(env: Env) {
         const connectionIndex = await getConnectionIndex(env.BANKING_KV);
         const connInfo = connectionIndex?.connections.find(c => c.id === result.connectionId);
         const label = connInfo?.label || session.label || session.aspspName;
-        return textContent(
-          `Bank consent for "${label}" has expired. Please reconnect by visiting the setup page at /setup`
-        );
+        return textContent(await expiredMessage(env, label, result.connectionId));
       }
 
       const connectionIndex = await getConnectionIndex(env.BANKING_KV);
@@ -570,7 +629,7 @@ export function createBankingMcpServer(env: Env) {
             amount: amount.toFixed(2),
           }));
 
-      return textContent(
+      return await ok(
         JSON.stringify(
           {
             group: groupLabel,
