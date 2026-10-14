@@ -18,6 +18,9 @@ import {
   generateConnectionId,
   storeBaseUrl,
   ensureBaseUrl,
+  getConnectRequest,
+  deleteConnectRequest,
+  type ConnectRequest,
   getConnectionId,
   getConnectionLabel,
 } from "./enable-banking/client";
@@ -45,6 +48,7 @@ import {
   renderPrivacyPage,
   renderTermsPage,
   renderErrorPage,
+  renderConnectPage,
   type WizardState,
 } from "./ui/pages";
 
@@ -348,6 +352,79 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
     return new Response("Method not allowed", { status: 405 });
   }
 
+  private async handleConnectFlow(
+    connectRequest: ConnectRequest,
+    token: string,
+    baseUrl: string
+  ): Promise<Response> {
+    const { label, psuType, country, bankName } = connectRequest;
+
+    try {
+      const client = await EnableBankingClient.create(this.env);
+      const banks = await client.getASPSPs(country);
+
+      let matchedBank: { name: string; aspsp_id?: string } | undefined;
+      if (bankName) {
+        const exactMatches = banks.filter(
+          (b) => b.name.toLowerCase() === bankName.toLowerCase()
+        );
+        if (exactMatches.length === 1) {
+          matchedBank = exactMatches[0];
+        }
+      }
+
+      if (matchedBank) {
+        return await this.startConnectAuthorization(
+          token,
+          matchedBank.aspsp_id || matchedBank.name,
+          matchedBank.name,
+          country,
+          psuType,
+          label,
+          baseUrl
+        );
+      }
+
+      return htmlResponse(
+        renderConnectPage(baseUrl, label, psuType, country, banks, token, bankName)
+      );
+    } catch (error) {
+      console.error("Failed to handle connect flow:", error);
+      const { message, details } = parseApiError(error);
+      return htmlResponse(renderCallbackErrorPage(message, details), 500);
+    }
+  }
+
+  private async startConnectAuthorization(
+    token: string,
+    aspspId: string,
+    aspspName: string,
+    country: string,
+    psuType: "personal" | "business",
+    label: string,
+    baseUrl: string
+  ): Promise<Response> {
+    const state = crypto.randomUUID();
+    const client = await EnableBankingClient.create(this.env);
+    const auth = await client.startAuthorization(
+      aspspName,
+      country,
+      `${baseUrl}/callback`,
+      psuType,
+      state
+    );
+    await storePendingAuth(this.env.BANKING_KV, state, {
+      aspspId,
+      aspspName,
+      aspspCountry: country,
+      connectionId: generateConnectionId(),
+      psuType,
+      label: label || aspspName,
+    });
+    await deleteConnectRequest(this.env.BANKING_KV, token);
+    return Response.redirect(auth.url, 302);
+  }
+
   private async handleSetupRoutes(request: Request): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -391,6 +468,77 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
     }
 
     const isAuthenticated = await validateSessionAuth(request, this.env);
+
+    if (path === "/connect") {
+      const token = url.searchParams.get("token");
+      if (!token) {
+        return htmlResponse(
+          renderCallbackErrorPage("Missing token", "No connect token was provided."),
+          400
+        );
+      }
+      const connectRequest = await getConnectRequest(this.env.BANKING_KV, token);
+      if (!connectRequest) {
+        return htmlResponse(
+          renderCallbackErrorPage("Invalid or expired token", "The connect link has expired or is invalid. Please request a new one."),
+          400
+        );
+      }
+      if (!isAuthenticated) {
+        const returnUrl = encodeURIComponent(`/connect?token=${encodeURIComponent(token)}`);
+        return Response.redirect(`${baseUrl}/login?return=${returnUrl}`, 302);
+      }
+      return this.handleConnectFlow(connectRequest, token, baseUrl);
+    }
+
+    if (path === "/auth/connect") {
+      if (!isAuthenticated) {
+        return Response.redirect(`${baseUrl}/login`, 302);
+      }
+      if (request.method !== "POST") {
+        return new Response("Method not allowed", { status: 405 });
+      }
+      const formData = await request.formData();
+      const token = formData.get("token")?.toString();
+      const aspspId = formData.get("aspsp_id")?.toString();
+      const aspspName = formData.get("aspsp_name")?.toString() || aspspId || "";
+      if (!token) {
+        return htmlResponse(
+          renderCallbackErrorPage("Missing token", "No connect token was provided."),
+          400
+        );
+      }
+      const connectRequest = await getConnectRequest(this.env.BANKING_KV, token);
+      if (!connectRequest) {
+        return htmlResponse(
+          renderCallbackErrorPage("Invalid or expired token", "The connect link has expired. Please request a new one."),
+          400
+        );
+      }
+      if (!aspspId) {
+        return htmlResponse(
+          renderCallbackErrorPage("Please select a bank", "No bank was selected from the list."),
+          400
+        );
+      }
+      const country = formData.get("country")?.toString() || connectRequest.country;
+      const psuType = (formData.get("psu_type")?.toString() || connectRequest.psuType || "personal") as "personal" | "business";
+      try {
+        return await this.startConnectAuthorization(
+          token,
+          aspspId,
+          aspspName,
+          country,
+          psuType,
+          connectRequest.label,
+          baseUrl
+        );
+      } catch (error) {
+        console.error("Failed to start authorization:", error);
+        const { message, details } = parseApiError(error);
+        return htmlResponse(renderCallbackErrorPage(message, details), 500);
+      }
+    }
 
     if (path === "/" || path === "/setup") {
       if (!isAuthenticated) {

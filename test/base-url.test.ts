@@ -79,3 +79,28 @@ describe("connection_status and expired-session mapping", () => {
     );
   });
 });
+
+describe("add_bank_connection", () => {
+  it("returns a one-time /connect URL and stores the request with a 1h TTL", async () => {
+    const kv = mockKV({ "config:baseUrl": "https://x.workers.dev" });
+    createBankingMcpServer({ BANKING_KV: kv } as unknown as Env);
+    const res = await handlers.add_bank_connection({ label: "Test", psu_type: "personal" });
+    const body = JSON.parse(res.content[0].text);
+    expect(body.url).toMatch(/^https:\/\/x\.workers\.dev\/connect\?token=[0-9a-f-]{36}$/);
+    expect(body).toMatchObject({ label: "Test", psuType: "personal", country: "DK", expiresIn: "1 hour" });
+    const token = new URL(body.url).searchParams.get("token");
+    expect(kv.put).toHaveBeenCalledWith(`connect_request:${token}`, expect.any(String), { expirationTtl: 3600 });
+  });
+
+  it("registers each tool name exactly once", () => {
+    const names: string[] = [];
+    const kv = mockKV();
+    for (const k of Object.keys(handlers)) delete handlers[k];
+    createBankingMcpServer({ BANKING_KV: kv } as unknown as Env);
+    names.push(...Object.keys(handlers));
+    expect(names.sort()).toEqual([
+      "add_bank_connection", "connection_status", "get_balances", "get_transactions",
+      "list_accounts", "search_transactions", "summarize_spending",
+    ]);
+  });
+});
