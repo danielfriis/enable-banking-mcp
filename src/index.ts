@@ -1,3 +1,5 @@
+import { refreshSessionAccounts, refreshNotice } from "./enable-banking/refresh";
+import { listMcpClients, OWNER_USER_ID } from "./mcp-clients";
 import { OAuthProvider, AuthorizationError, CimdFetchError } from "@cloudflare/workers-oauth-provider";
 import { WorkerEntrypoint } from "cloudflare:workers";
 import { createMcpHandler } from "agents/mcp/server";
@@ -27,7 +29,7 @@ import {
   renameConnection,
 } from "./enable-banking/client";
 import type { ConnectionInfo } from "./types";
-import { buildScopeProps, addToScope, type TokenProps } from "./scope";
+import { buildScopeProps, addToScope, grantIdFromAuthHeader, setClientScopeOverride, deleteClientScopeOverride, parseScopeForm, type TokenProps } from "./scope";
 import {
   magicLinkEnabled,
   sendMagicLink,
@@ -71,6 +73,18 @@ const COUNTRIES = [
 ];
 
 async function buildWizardState(env: Env): Promise<WizardState> {
+  const state = await buildBaseWizardState(env);
+  if (!state.hasCredentials || !state.hasBankSession || !env.OAUTH_PROVIDER) return state;
+  try {
+    state.clients = await listMcpClients(env.OAUTH_PROVIDER, OWNER_USER_ID, env.BANKING_KV);
+  } catch (error) {
+    console.error("Failed to list MCP clients:", error);
+    state.clientsUnavailable = true;
+  }
+  return state;
+}
+
+async function buildBaseWizardState(env: Env): Promise<WizardState> {
   const credentialsFromEnv = hasEnvCredentials(env);
   const storedCredentialsMeta = await getStoredCredentialsMetadata(env.BANKING_KV);
   const hasCredentials = credentialsFromEnv || storedCredentialsMeta !== null;
@@ -88,6 +102,7 @@ async function buildWizardState(env: Env): Promise<WizardState> {
       aspspCountry: session.aspspCountry,
       validUntil: session.consentValidUntil,
       accountCount: session.accounts.length,
+      accounts: session.accounts.map((a) => ({ accountId: a.accountId, name: a.name, iban: a.iban, currency: a.currency })),
     };
   });
   
@@ -225,14 +240,16 @@ export const MCP_HANDLER_OPTIONS = {
   },
 };
 
-export const createMcpHandlerForEnv = (env: Env, props?: TokenProps | null) =>
-  createMcpHandler(() => createBankingMcpServer(env, props), MCP_HANDLER_OPTIONS);
+export const createMcpHandlerForEnv = (env: Env, props?: TokenProps | null, grantId?: string) =>
+  createMcpHandler(() => createBankingMcpServer(env, props, grantId), MCP_HANDLER_OPTIONS);
 
 export class McpApiHandler extends WorkerEntrypoint<Env> {
   async fetch(request: Request): Promise<Response> {
     // OAuth token props (userId, scopeGroups, scopeKey) set by the OAuth provider.
     const props = (this.ctx as unknown as { props?: TokenProps }).props;
-    return createMcpHandlerForEnv(this.env, props)(request, this.env, this.ctx);
+    // OAuth access tokens are `userId:grantId:secret`; the grant id keys owner-set scope overrides.
+    const grantId = props ? grantIdFromAuthHeader(request.headers.get("Authorization")) : undefined;
+    return createMcpHandlerForEnv(this.env, props, grantId)(request, this.env, this.ctx);
   }
 }
 
@@ -389,7 +406,7 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
             selected,
           });
         }
-        const props = buildScopeProps("owner", selected, allIds);
+        const props = buildScopeProps(OWNER_USER_ID, selected, allIds);
 
         const { request: approvedRequest, headers } = await oauthHelpers.approveConsent(
           request,
@@ -399,7 +416,7 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
 
         const { redirectTo } = await oauthHelpers.completeAuthorization({
           request: approvedRequest,
-          userId: props.userId || "owner",
+          userId: props.userId || OWNER_USER_ID,
           metadata: { role: "owner", scopeGroups: props.scopeGroups || "all" },
           scope: approvedRequest.scope,
           props,
@@ -630,6 +647,108 @@ export class DefaultHandler extends WorkerEntrypoint<Env> {
           ok ? undefined : "Could not rename: connection not found or empty name",
           ok ? `Renamed to "${label}"` : undefined
         ),
+        ok ? 200 : 400
+      );
+    }
+
+    if (path === "/connections/new" && request.method === "POST") {
+      if (!isAuthenticated) {
+        return Response.redirect(`${baseUrl}/login`, 302);
+      }
+      const token = crypto.randomUUID();
+      await storeConnectRequest(this.env.BANKING_KV, token, {
+        label: "",
+        psuType: "personal",
+        country: "DK",
+        createdAt: Date.now(),
+        editable: true,
+        returnTo: "/setup",
+      });
+      return new Response(null, { status: 303, headers: { Location: `/connect?token=${encodeURIComponent(token)}` } });
+    }
+
+    if (path === "/clients/scope" && request.method === "POST") {
+      if (!isAuthenticated) {
+        return Response.redirect(`${baseUrl}/login`, 302);
+      }
+      const formData = await request.formData();
+      const grantId = formData.get("grant_id")?.toString() || "";
+      const sessions = await getAllSessions(this.env.BANKING_KV);
+      const override = parseScopeForm(
+        {
+          allBanks: formData.get("all_banks") === "1",
+          connections: formData.getAll("connection").map(String),
+          accounts: formData.getAll("account").map(String),
+        },
+        sessions
+      );
+      let error: string | undefined;
+      let notice: string | undefined;
+      const grants = await listMcpClients(this.env.OAUTH_PROVIDER).catch(() => []);
+      const grant = grants.find((g) => g.grantId === grantId);
+      if (!grant) {
+        error = "That app is no longer connected";
+      } else if (!override) {
+        error = "Select at least one bank or account, or revoke the app instead";
+      } else {
+        await setClientScopeOverride(this.env.BANKING_KV, grantId, override);
+        notice = `Updated access for ${grant.clientName}`;
+      }
+      const wizardState = await buildWizardState(this.env);
+      return htmlResponse(renderWizardPage(baseUrl, wizardState, COUNTRIES, error, notice), error ? 400 : 200);
+    }
+
+    if (path === "/connections/refresh" && request.method === "POST") {
+      if (!isAuthenticated) {
+        return Response.redirect(`${baseUrl}/login`, 302);
+      }
+      const formData = await request.formData();
+      const connectionId = formData.get("connection_id")?.toString() || "";
+      const session = connectionId ? await getStoredSession(this.env.BANKING_KV, connectionId) : null;
+      let error: string | undefined;
+      let notice: string | undefined;
+      if (!session) {
+        error = "Bank connection not found";
+      } else {
+        const label = session.label || session.aspspName;
+        try {
+          const client = await EnableBankingClient.create(this.env);
+          const result = await refreshSessionAccounts(client, session);
+          if (!result.authorized) {
+            error = `${label}: the bank consent is no longer active. Use Renew to approve again with MitID.`;
+          } else {
+            await storeSession(this.env.BANKING_KV, result.session, connectionId);
+            notice = refreshNotice(label, result.added.length, result.removed.length, result.session.accounts.length);
+          }
+        } catch (e) {
+          console.error("Failed to refresh accounts:", e);
+          const { message } = parseApiError(e);
+          error = `${label}: couldn't refresh accounts (${message}). If the consent has expired, use Renew.`;
+        }
+      }
+      const wizardState = await buildWizardState(this.env);
+      return htmlResponse(renderWizardPage(baseUrl, wizardState, COUNTRIES, error, notice), error ? 400 : 200);
+    }
+
+    if (path === "/clients/revoke" && request.method === "POST") {
+      if (!isAuthenticated) {
+        return Response.redirect(`${baseUrl}/login`, 302);
+      }
+      const formData = await request.formData();
+      const grantId = formData.get("grant_id")?.toString() || "";
+      let ok = false;
+      if (grantId) {
+        try {
+          await this.env.OAUTH_PROVIDER.revokeGrant(grantId, OWNER_USER_ID);
+          await deleteClientScopeOverride(this.env.BANKING_KV, grantId);
+          ok = true;
+        } catch (error) {
+          console.error("Failed to revoke grant:", error);
+        }
+      }
+      const wizardState = await buildWizardState(this.env);
+      return htmlResponse(
+        renderWizardPage(baseUrl, wizardState, COUNTRIES, ok ? undefined : "Could not revoke that client", ok ? "Client access revoked" : undefined),
         ok ? 200 : 400
       );
     }
