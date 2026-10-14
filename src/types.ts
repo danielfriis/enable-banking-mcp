@@ -48,6 +48,21 @@ export interface ConnectionIndex {
   updatedAt: string;
 }
 
+export type ConnectionStatus = "ok" | "expiring" | "expired";
+
+export interface ConnectionStatusInfo {
+  connectionId: string;
+  label: string;
+  bank: string;
+  country: string;
+  psuType: "personal" | "business";
+  validUntil: string;
+  daysLeft: number;
+  status: ConnectionStatus;
+  renewUrl: string;
+  accountCount: number;
+}
+
 export interface BankAccount {
   accountId: string;
   iban?: string;
